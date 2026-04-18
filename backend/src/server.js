@@ -5,12 +5,14 @@ const db = require('./db');
 const healthRouter = require('./routes/health');
 const authRouter = require('./routes/auth');
 const listingsRouter = require('./routes/listings');
+const favoritesRouter = require('./routes/favorites');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use('/auth', authRouter);
 app.use('/listings', listingsRouter);
+app.use('/favorites', favoritesRouter);
 
 app.use('/health', healthRouter);
 

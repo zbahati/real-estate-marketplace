@@ -10,7 +10,9 @@ async function createListing(req, res) {
       city,
       country,
       lat,
-      lng
+      lng,
+      category,
+      listing_type
     } = req.body;
 
     // 1. Create location
@@ -27,7 +29,9 @@ async function createListing(req, res) {
       location_id: location.id,
       title,
       description,
-      price
+      price,
+      category,
+      listing_type
     });
 
     res.status(201).json(listing);
@@ -40,7 +44,7 @@ async function createListing(req, res) {
 
 async function getNearbyListings(req, res) {
   try {
-    const { lat, lng, radius } = req.query;
+    const { lat, lng, radius, category, minPrice, maxPrice } = req.query;
 
     if (!lat || !lng) {
       return res.status(400).json({ message: 'lat and lng are required' });
@@ -49,7 +53,10 @@ async function getNearbyListings(req, res) {
     const listings = await listingsRepo.getNearbyListings({
       lat: Number(lat),
       lng: Number(lng),
-      radiusKm: radius ? Number(radius) : 5
+      radiusKm: radius ? Number(radius) : 5,
+      category,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined
     });
 
     res.json(listings);
@@ -60,7 +67,64 @@ async function getNearbyListings(req, res) {
   }
 }
 
+// Get my listings
+async function getMyListings(req, res) {
+  try {
+    const listings = await listingsRepo.getListingsByOwner(req.user.id);
+    res.json(listings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Update listing
+async function updateListing(req, res) {
+  try {
+    const { id } = req.params;
+
+    const updated = await listingsRepo.updateListing(
+      id,
+      req.user.id,
+      req.body
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Listing not found' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Delete listing
+async function deleteListing(req, res) {
+  try {
+    const { id } = req.params;
+
+    const deleted = await listingsRepo.deleteListing(
+      id,
+      req.user.id
+    );
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Listing not found' });
+    }
+
+    res.json({ message: 'Listing deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   createListing,
-  getNearbyListings
+  getNearbyListings,
+  getMyListings,
+  updateListing,
+  deleteListing
 };
