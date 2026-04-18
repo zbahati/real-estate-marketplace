@@ -5,10 +5,19 @@ async function addFavorite(req, res) {
   try {
     const { listing_id } = req.body;
 
+     if (!listing_id) {
+      return res.status(400).json({ message: 'listing_id is required' });
+    }
+
     const favorite = await favoritesRepo.addFavorite(
       req.user.id,
       listing_id
     );
+
+    if (!favorite) {
+     return res.status(200).json({ message: 'Already in favorites' });
+   }
+    res.status(201).json(favorite);
 
     res.status(201).json(favorite);
   } catch (err) {

@@ -83,10 +83,17 @@ async function updateListing(req, res) {
   try {
     const { id } = req.params;
 
+    const { title, description, price, currency, category, listing_type,
+      bedrooms, bathrooms, sqft, is_published } = req.body;
+    const updateData = Object.fromEntries(
+      Object.entries({ title, description, price, currency, category, listing_type, bedrooms, bathrooms, sqft, is_published })
+        .filter(([_, v]) => v !== undefined)
+    );
+
     const updated = await listingsRepo.updateListing(
       id,
       req.user.id,
-      req.body
+      updateData
     );
 
     if (!updated) {

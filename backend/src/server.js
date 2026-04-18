@@ -10,6 +10,7 @@ const favoritesRouter = require('./routes/favorites');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
 app.use('/auth', authRouter);
 app.use('/listings', listingsRouter);
 app.use('/favorites', favoritesRouter);
