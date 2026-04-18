@@ -17,4 +17,22 @@ CREATE INDEX IF NOT EXISTS idx_locations_geo
 ON locations
 USING GIST (geo_location);
 
+
+-- Category (house, car, land)
+ALTER TABLE listings
+ADD COLUMN IF NOT EXISTS category VARCHAR(50);
+
+-- Listing type (rent, sale)
+ALTER TABLE listings
+ADD COLUMN IF NOT EXISTS listing_type VARCHAR(50);
+
+-- Optional: enforce values
+ALTER TABLE listings
+ADD CONSTRAINT check_category
+CHECK (category IN ('house', 'car', 'land'));
+
+ALTER TABLE listings
+ADD CONSTRAINT check_listing_type
+CHECK (listing_type IN ('rent', 'sale'));
+
 COMMIT;

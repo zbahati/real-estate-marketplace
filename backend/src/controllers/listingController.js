@@ -10,7 +10,9 @@ async function createListing(req, res) {
       city,
       country,
       lat,
-      lng
+      lng,
+      category,
+      listing_type
     } = req.body;
 
     // 1. Create location
@@ -27,7 +29,9 @@ async function createListing(req, res) {
       location_id: location.id,
       title,
       description,
-      price
+      price,
+      category,
+      listing_type
     });
 
     res.status(201).json(listing);
@@ -40,7 +44,7 @@ async function createListing(req, res) {
 
 async function getNearbyListings(req, res) {
   try {
-    const { lat, lng, radius } = req.query;
+    const { lat, lng, radius, category, minPrice, maxPrice } = req.query;
 
     if (!lat || !lng) {
       return res.status(400).json({ message: 'lat and lng are required' });
@@ -49,7 +53,10 @@ async function getNearbyListings(req, res) {
     const listings = await listingsRepo.getNearbyListings({
       lat: Number(lat),
       lng: Number(lng),
-      radiusKm: radius ? Number(radius) : 5
+      radiusKm: radius ? Number(radius) : 5,
+      category,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined
     });
 
     res.json(listings);
