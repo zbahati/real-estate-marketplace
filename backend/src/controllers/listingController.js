@@ -67,7 +67,64 @@ async function getNearbyListings(req, res) {
   }
 }
 
+// Get my listings
+async function getMyListings(req, res) {
+  try {
+    const listings = await listingsRepo.getListingsByOwner(req.user.id);
+    res.json(listings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Update listing
+async function updateListing(req, res) {
+  try {
+    const { id } = req.params;
+
+    const updated = await listingsRepo.updateListing(
+      id,
+      req.user.id,
+      req.body
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Listing not found' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Delete listing
+async function deleteListing(req, res) {
+  try {
+    const { id } = req.params;
+
+    const deleted = await listingsRepo.deleteListing(
+      id,
+      req.user.id
+    );
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Listing not found' });
+    }
+
+    res.json({ message: 'Listing deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   createListing,
-  getNearbyListings
+  getNearbyListings,
+  getMyListings,
+  updateListing,
+  deleteListing
 };
