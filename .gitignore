@@ -1,0 +1,28 @@
+node_modules/
+.env
+dist/
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Logs
+logs
+*.log
+
+# OS files
+.DS_Store
+
+# Expo
+.expo/
+dist/
+
+# Build outputs
+build/
+
+# Coverage
+coverage/
+
+# Debug
+npm-debug.log*
