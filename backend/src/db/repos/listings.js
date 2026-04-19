@@ -237,10 +237,20 @@ async function deleteListing(id, owner_id) {
   return res.rows[0];
 }
 
+async function getListingById(id) {
+  const res = await db.query(
+    `SELECT * FROM listings WHERE id = $1`,
+    [id]
+  );
+
+  return res.rows[0] || null;
+}
+
 module.exports = {
   createListing,
   getNearbyListings,
   getListingsByOwner,
+  getListingById,
   updateListing,
   deleteListing,
   getListingDetails
