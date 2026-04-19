@@ -41,36 +41,49 @@ async function createListing({
   return res.rows[0];
 }
 
-async function getListingById(id) {
-  const res = await db.query('SELECT * FROM listings WHERE id = $1', [id]);
-  return res.rows[0] || null;
-}
+async function getListingDetails(id) {
+  const sql = `
+    SELECT 
+      l.*,
 
-// Simple paginated search with optional min/max price and published filter
-async function searchListings({ limit = 20, offset = 0, minPrice, maxPrice, publishedOnly = true }) {
-  const clauses = [];
-  const params = [];
-  let idx = 1;
+      -- 📍 location
+      json_build_object(
+        'city', loc.city,
+        'country', loc.country,
+        'lat', loc.lat,
+        'lng', loc.lng
+      ) AS location,
 
-  if (publishedOnly) {
-    clauses.push(`is_published = true`);
-  }
-  if (minPrice != null) {
-    clauses.push(`price >= $${idx++}`);
-    params.push(minPrice);
-  }
-  if (maxPrice != null) {
-    clauses.push(`price <= $${idx++}`);
-    params.push(maxPrice);
-  }
+      -- 🧑 owner
+      json_build_object(
+        'id', u.id,
+        'name', u.full_name,
+        'phone', u.phone
+      ) AS owner,
 
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  params.push(limit);
-  params.push(offset);
+      -- 🖼 images
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', img.id,
+            'url', img.url
+          )
+        ) FILTER (WHERE img.id IS NOT NULL),
+        '[]'
+      ) AS images
 
-  const sql = `SELECT * FROM listings ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx}`;
-  const res = await db.query(sql, params);
-  return res.rows;
+    FROM listings l
+    LEFT JOIN locations loc ON l.location_id = loc.id
+    LEFT JOIN users u ON l.owner_id = u.id
+    LEFT JOIN images img ON img.listing_id = l.id
+
+    WHERE l.id = $1
+
+    GROUP BY l.id, loc.id, u.id
+  `;
+
+  const res = await db.query(sql, [id]);
+  return res.rows[0];
 }
 
 async function getNearbyListings({
@@ -226,10 +239,9 @@ async function deleteListing(id, owner_id) {
 
 module.exports = {
   createListing,
-  getListingById,
-  searchListings,
   getNearbyListings,
   getListingsByOwner,
   updateListing,
-  deleteListing
+  deleteListing,
+  getListingDetails
 };
