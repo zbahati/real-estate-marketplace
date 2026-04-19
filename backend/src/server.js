@@ -6,6 +6,7 @@ const healthRouter = require('./routes/health');
 const authRouter = require('./routes/auth');
 const listingsRouter = require('./routes/listings');
 const favoritesRouter = require('./routes/favorites');
+const imagesRouter = require('./routes/images');
 
 const app = express();
 app.use(cors());
@@ -14,6 +15,7 @@ app.use(express.json());
 app.use('/auth', authRouter);
 app.use('/listings', listingsRouter);
 app.use('/favorites', favoritesRouter);
+app.use('/images', imagesRouter);
 
 app.use('/health', healthRouter);
 

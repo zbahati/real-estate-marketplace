@@ -90,6 +90,10 @@ async function updateListing(req, res) {
         .filter(([_, v]) => v !== undefined)
     );
 
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ message: 'No updatable fields provided' });
+    }
+
     const updated = await listingsRepo.updateListing(
       id,
       req.user.id,

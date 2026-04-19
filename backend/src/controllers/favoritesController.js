@@ -5,7 +5,7 @@ async function addFavorite(req, res) {
   try {
     const { listing_id } = req.body;
 
-     if (!listing_id) {
+    if (!listing_id) {
       return res.status(400).json({ message: 'listing_id is required' });
     }
 
@@ -15,11 +15,9 @@ async function addFavorite(req, res) {
     );
 
     if (!favorite) {
-     return res.status(200).json({ message: 'Already in favorites' });
-   }
-    res.status(201).json(favorite);
-
-    res.status(201).json(favorite);
+      return res.status(200).json({ message: 'Already in favorites' });
+    }
+    return res.status(201).json(favorite);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
