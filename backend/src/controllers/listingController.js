@@ -41,6 +41,23 @@ async function createListing(req, res) {
   }
 }
 
+async function getListingDetails(req, res) {
+  try {
+    const { id } = req.params;
+
+    const listing = await listingsRepo.getListingDetails(id);
+
+    if (!listing) {
+      return res.status(404).json({ message: 'Listing not found' });
+    }
+
+    res.json(listing);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
 
 async function getNearbyListings(req, res) {
   try {
@@ -134,6 +151,7 @@ async function deleteListing(req, res) {
 
 module.exports = {
   createListing,
+  getListingDetails,
   getNearbyListings,
   getMyListings,
   updateListing,
