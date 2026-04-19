@@ -124,18 +124,42 @@ async function getNearbyListings({
   params.push(limit);
 
   const sql = `
-    SELECT 
-      l.*,
+  SELECT 
+    l.*,
+
+    -- ✅ Attach images
+    COALESCE(
+      json_agg(
+        json_build_object(
+          'id', img.id,
+          'url', img.url
+        )
+      ) FILTER (WHERE img.id IS NOT NULL),
+      '[]'
+    ) AS images,
+
+    -- ✅ Distance
+    MIN(
       ST_Distance(
         loc.geo_location::geography,
         ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
-      ) AS distance
-    FROM listings l
-    JOIN locations loc ON l.location_id = loc.id
-    WHERE ${clauses.join(' AND ')}
-    ORDER BY distance ASC
-    LIMIT $${idx}
-  `;
+      )
+    ) AS distance
+
+  FROM listings l
+  JOIN locations loc ON l.location_id = loc.id
+
+  -- ✅ Join images
+  LEFT JOIN images img ON img.listing_id = l.id
+
+  WHERE ${clauses.join(' AND ')}
+
+  -- ✅ Required for aggregation
+  GROUP BY l.id, loc.geo_location
+
+  ORDER BY distance ASC
+  LIMIT $${idx}
+`;
 
   const res = await db.query(sql, params);
   return res.rows;
@@ -143,10 +167,26 @@ async function getNearbyListings({
 
 // Get listings by owner
 async function getListingsByOwner(owner_id) {
-  const res = await db.query(
-    `SELECT * FROM listings WHERE owner_id = $1 ORDER BY created_at DESC`,
-    [owner_id]
-  );
+  const sql = `
+    SELECT 
+      l.*,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', img.id,
+            'url', img.url
+          )
+        ) FILTER (WHERE img.id IS NOT NULL),
+        '[]'
+      ) AS images
+    FROM listings l
+    LEFT JOIN images img ON img.listing_id = l.id
+    WHERE l.owner_id = $1
+    GROUP BY l.id
+    ORDER BY l.created_at DESC
+  `;
+
+  const res = await db.query(sql, [owner_id]);
   return res.rows;
 }
 
