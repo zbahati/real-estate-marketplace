@@ -61,7 +61,20 @@ async function updateRequestStatus(req, res) {
       return res.status(404).json({ message: 'Request not found' });
     }
 
-    res.json(updated);
+    // 🔥 IMPORTANT: unlock contact when accepted (TEMP logic)
+    if (status === 'accepted') {
+      await require('../db').query(
+        `UPDATE requests 
+         SET contact_unlocked = true 
+         WHERE id = $1`,
+        [id]
+      );
+    }
+
+    res.json({
+      ...updated,
+      contact_unlocked: status === 'accepted' ? true : updated.contact_unlocked
+    });
 
   } catch (err) {
     console.error(err);

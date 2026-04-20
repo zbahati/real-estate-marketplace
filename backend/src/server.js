@@ -8,6 +8,7 @@ const listingsRouter = require('./routes/listings');
 const favoritesRouter = require('./routes/favorites');
 const imagesRouter = require('./routes/images');
 const requestRoutes = require('./routes/requests');
+const paymentRoutes = require('./routes/payments');
 
 const app = express();
 app.use(cors());
@@ -18,6 +19,7 @@ app.use('/listings', listingsRouter);
 app.use('/favorites', favoritesRouter);
 app.use('/images', imagesRouter);
 app.use('/requests', requestRoutes);
+app.use('/payments', paymentRoutes);
 
 app.use('/health', healthRouter);
 

@@ -12,9 +12,35 @@ async function createRequest({ listing_id, sender_id, owner_id, message }) {
 
 async function getRequestsForOwner(owner_id) {
   const res = await db.query(
-    `SELECT * FROM requests WHERE owner_id = $1 ORDER BY created_at DESC`,
+    `
+    SELECT 
+      r.id,
+      r.status,
+      r.message,
+      r.created_at,
+
+      l.id AS listing_id,
+      l.title,
+      l.price,
+
+      u.id AS sender_id,
+      u.full_name AS sender_name,
+      u.phone AS sender_phone,
+      u.email AS sender_email,
+
+      -- 🔥 WhatsApp link (always available to owner)
+      'https://wa.me/' || REPLACE(u.phone, '+', '') AS whatsapp_link
+
+    FROM requests r
+    JOIN listings l ON r.listing_id = l.id
+    JOIN users u ON r.sender_id = u.id
+
+    WHERE r.owner_id = $1
+    ORDER BY r.created_at DESC
+    `,
     [owner_id]
   );
+
   return res.rows;
 }
 
