@@ -93,6 +93,7 @@ async function getNearbyListings({
   limit = 20,
   category,
   listing_type,
+  q,
   minPrice,
   maxPrice
 }) {
@@ -113,6 +114,18 @@ async function getNearbyListings({
   if (category) {
     clauses.push(`LOWER(l.category) = LOWER($${idx++})`);
     params.push(category);
+  }
+
+  // SEARCH QUERY (title / description / city)
+  if (q) {
+    clauses.push(`(
+      LOWER(l.title) LIKE LOWER($${idx}) OR
+      LOWER(l.description) LIKE LOWER($${idx}) OR
+      LOWER(loc.city) LIKE LOWER($${idx}) OR
+      LOWER(l.listing_type) LIKE LOWER($${idx})
+    )`);
+    params.push(`%${q}%`);
+    idx++;
   }
 
   // LISTING TYPE

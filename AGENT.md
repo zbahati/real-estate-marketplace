@@ -70,6 +70,11 @@ Follow DESIGN_SYSTEM.md strictly.
 
 ---
 
+## NAVIGATION
+- Use expo-router
+- File-based routing only
+- Do not use React Navigation manually
+
 ## GOAL
 
 Build a clean, scalable, deployable app step-by-step.
