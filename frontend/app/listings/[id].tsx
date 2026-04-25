@@ -42,7 +42,7 @@ export default function ListingDetails() {
 
   const openWhatsApp = (phone?: string) => {
     if (!phone) return;
-    const text = encodeURIComponent('Hello, I am interested in your postings, is it still available?');
+    const text = encodeURIComponent('Hello from real estate marketplace, I am interested in your postings, is it still available?');
     const url = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${text}`;
     Linking.openURL(url).catch(() => alert('Unable to open WhatsApp'));
   };
