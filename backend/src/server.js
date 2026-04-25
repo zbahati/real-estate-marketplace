@@ -13,6 +13,7 @@ const paymentRoutes = require('./routes/payments');
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.set('trust proxy', 1);
 
 app.use('/auth', authRouter);
 app.use('/listings', listingsRouter);
