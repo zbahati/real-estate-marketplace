@@ -86,6 +86,114 @@ async function getListingDetails(id) {
   return res.rows[0];
 }
 
+// async function getNearbyListings({
+//   lat,
+//   lng,
+//   radiusKm = 5,
+//   limit = 20,
+//   category,
+//   listing_type,
+//   q,
+//   minPrice,
+//   maxPrice
+// }) {
+//   const clauses = [
+//     `l.is_published = true`,
+//     `loc.geo_location IS NOT NULL`,
+//     `ST_DWithin(
+//       loc.geo_location::geography,
+//       ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+//       $3 * 1000
+//     )`
+//   ];
+
+//   const params = [lat, lng, radiusKm];
+//   let idx = 4;
+
+//   // CATEGORY
+//   if (category) {
+//     clauses.push(`LOWER(l.category) = LOWER($${idx++})`);
+//     params.push(category);
+//   }
+
+//   // SEARCH QUERY (title / description / city)
+//   if (q) {
+//     clauses.push(`(
+//       LOWER(l.title) LIKE LOWER($${idx}) OR
+//       LOWER(l.description) LIKE LOWER($${idx}) OR
+//       LOWER(loc.city) LIKE LOWER($${idx}) OR
+//       LOWER(l.listing_type) LIKE LOWER($${idx})
+//     )`);
+//     params.push(`%${q}%`);
+//     idx++;
+//   }
+
+//   // LISTING TYPE
+//   if (listing_type) {
+//     clauses.push(`LOWER(l.listing_type) = LOWER($${idx++})`);
+//     params.push(listing_type);
+//   }
+
+//   // MIN PRICE
+//   if (minPrice != null) {
+//     clauses.push(`l.price >= $${idx++}`);
+//     params.push(minPrice);
+//   }
+
+//   // MAX PRICE
+//   if (maxPrice != null) {
+//     clauses.push(`l.price <= $${idx++}`);
+//     params.push(maxPrice);
+//   }
+
+//   // LIMIT
+//   params.push(limit);
+
+//   const sql = `
+//   SELECT 
+//     l.*,
+
+//     -- ✅ Attach images
+//     COALESCE(
+//       json_agg(
+//         json_build_object(
+//           'id', img.id,
+//           'url', img.url
+//         )
+//       ) FILTER (WHERE img.id IS NOT NULL),
+//       '[]'
+//     ) AS images,
+
+//     -- ✅ Distance
+//     MIN(
+//       ST_Distance(
+//         loc.geo_location::geography,
+//         ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
+//       )
+//     ) AS distance
+
+//   FROM listings l
+//   JOIN locations loc ON l.location_id = loc.id
+
+//   -- ✅ Join images
+//   LEFT JOIN images img ON img.listing_id = l.id
+
+//   WHERE ${clauses.join(' AND ')}
+
+//   -- ✅ Required for aggregation
+//   GROUP BY l.id, loc.geo_location
+
+//   ORDER BY distance ASC
+//   LIMIT $${idx}
+// `;
+
+//   const res = await db.query(sql, params);
+//   return res.rows;
+// }
+
+// Get listings by owner
+
+
 async function getNearbyListings({
   lat,
   lng,
@@ -110,13 +218,13 @@ async function getNearbyListings({
   const params = [lat, lng, radiusKm];
   let idx = 4;
 
-  // CATEGORY
+  // Category
   if (category) {
     clauses.push(`LOWER(l.category) = LOWER($${idx++})`);
     params.push(category);
   }
 
-  // SEARCH QUERY (title / description / city)
+  // Search query
   if (q) {
     clauses.push(`(
       LOWER(l.title) LIKE LOWER($${idx}) OR
@@ -128,70 +236,58 @@ async function getNearbyListings({
     idx++;
   }
 
-  // LISTING TYPE
+  // Listing type
   if (listing_type) {
     clauses.push(`LOWER(l.listing_type) = LOWER($${idx++})`);
     params.push(listing_type);
   }
 
-  // MIN PRICE
+  // Min price
   if (minPrice != null) {
     clauses.push(`l.price >= $${idx++}`);
     params.push(minPrice);
   }
 
-  // MAX PRICE
+  // Max price
   if (maxPrice != null) {
     clauses.push(`l.price <= $${idx++}`);
     params.push(maxPrice);
   }
 
-  // LIMIT
+  // Limit
   params.push(limit);
 
   const sql = `
-  SELECT 
-    l.*,
-
-    -- ✅ Attach images
-    COALESCE(
-      json_agg(
-        json_build_object(
-          'id', img.id,
-          'url', img.url
-        )
-      ) FILTER (WHERE img.id IS NOT NULL),
-      '[]'
-    ) AS images,
-
-    -- ✅ Distance
-    MIN(
+    SELECT 
+      l.*,
+      loc.lat,           -- ✅ Use stored latitude column
+      loc.lng,           -- ✅ Use stored longitude column
       ST_Distance(
         loc.geo_location::geography,
         ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
-      )
-    ) AS distance
-
-  FROM listings l
-  JOIN locations loc ON l.location_id = loc.id
-
-  -- ✅ Join images
-  LEFT JOIN images img ON img.listing_id = l.id
-
-  WHERE ${clauses.join(' AND ')}
-
-  -- ✅ Required for aggregation
-  GROUP BY l.id, loc.geo_location
-
-  ORDER BY distance ASC
-  LIMIT $${idx}
-`;
+      ) / 1000 AS distance,  -- ✅ Distance in km
+      COALESCE(
+        json_agg(
+          json_build_object('id', img.id, 'url', img.url)
+        ) FILTER (WHERE img.id IS NOT NULL),
+        '[]'
+      ) AS images
+    FROM listings l
+    JOIN locations loc ON l.location_id = loc.id
+    LEFT JOIN images img ON img.listing_id = l.id
+    WHERE ${clauses.join(' AND ')}
+    GROUP BY l.id, loc.lat, loc.lng, loc.geo_location
+    ORDER BY distance ASC
+    LIMIT $${idx}
+  `;
 
   const res = await db.query(sql, params);
   return res.rows;
 }
 
-// Get listings by owner
+
+
+
 async function getListingsByOwner(owner_id) {
   const sql = `
     SELECT 

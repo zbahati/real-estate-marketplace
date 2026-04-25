@@ -42,7 +42,7 @@ export default function ListingDetails() {
 
   const openWhatsApp = (phone?: string) => {
     if (!phone) return;
-    const text = encodeURIComponent('Hello, I am interested in your postings, is it still available?');
+    const text = encodeURIComponent('Hello from real estate marketplace, I am interested in your postings, is it still available?');
     const url = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${text}`;
     Linking.openURL(url).catch(() => alert('Unable to open WhatsApp'));
   };
@@ -188,7 +188,6 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: COLORS.primary, padding: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center' },
   secondaryBtn: { backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center', marginTop: SPACING.sm },
   thumbsRow: { position: 'absolute', bottom: 8, left: 0, right: 0 },
-  thumbsRow: { position: 'absolute', bottom: 16, left: 0, right: 0 },
   thumbWrap: { marginRight: SPACING.sm, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent', width: 96, height: 72 },
   thumb: { width: 96, height: 72, resizeMode: 'cover' },
   thumbActive: { borderColor: COLORS.primary },
