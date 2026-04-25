@@ -6,11 +6,11 @@ import api from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import type { Listing } from '../types';
 import ListingCard from '../components/ListingCard';
-import CategoryChips from '../components/CategoryChips';
 import { Feather as Icon } from '@expo/vector-icons';
 import { SPACING, COLORS, FONT, RADIUS } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 
 export default function HomeScreen() {
   const [listings, setListings] = useState<Listing[]>([]);
@@ -22,17 +22,6 @@ export default function HomeScreen() {
   const [ownerFallback, setOwnerFallback] = useState(false);
   const { token } = useAuthStore();
   const router = useRouter();
-
-  const defaultItems = [
-    { label: 'All', value: '' },
-    { label: 'House', value: 'house' },
-    { label: 'Cars', value: 'car' },
-    { label: 'Lands', value: 'lands' },
-  ];
-
-  const categoryItems = (categories && categories.length > 0)
-    ? categories.map((c) => ({ label: String(c).charAt(0).toUpperCase() + String(c).slice(1), value: String(c) }))
-    : defaultItems;
 
   // listing types are searchable via text query (q)
 
@@ -57,50 +46,108 @@ export default function HomeScreen() {
   const searchInputRef = useRef<TextInput | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadListings = async () => {
-    setLoading(true);
-    try {
-      // Request nearby listings without explicit coords. Backend will
-      // use IP-based geo lookup or default center (Gisenyi) if needed.
-      const data = await getNearbyListings({ q: query || undefined, listing_type: listingType || undefined, category: selectedCategory || undefined });
-      setListings(data || []);
-      // derive categories from fetched listings (filter out undefined with a type guard)
-      const cats = Array.from(
-        new Set((data || []).map((l: Listing) => l.category).filter((c): c is string => !!c))
-      );
-      setCategories(cats);
+  // const loadListings = async () => {
+  //   setLoading(true);
+  //   try {
+  //     // Request nearby listings without explicit coords. Backend will
+  //     // use IP-based geo lookup or default center (Gisenyi) if needed.
+  //     const data = await getNearbyListings({ q: query || undefined, listing_type: listingType || undefined, category: selectedCategory || undefined });
+  //     setListings(data || []);
+  //     // derive categories from fetched listings (filter out undefined with a type guard)
+  //     const cats = Array.from(
+  //       new Set((data || []).map((l: Listing) => l.category).filter((c): c is string => !!c))
+  //     );
+  //     setCategories(cats);
 
-      // If no public listings found, and user is authenticated, show their listings as a fallback
-      if ((data || []).length === 0 && token) {
-        try {
-          const res = await api.get('/listings/my');
-          const myList = res.data && res.data.data !== undefined ? res.data.data : res.data;
-          if (Array.isArray(myList) && myList.length > 0) {
-            setListings(myList);
-            setOwnerFallback(true);
-          }
-        } catch (err) {
-          // ignore
-        }
+  //     // If no public listings found, and user is authenticated, show their listings as a fallback
+  //     if ((data || []).length === 0 && token) {
+  //       try {
+  //         const res = await api.get('/listings/my');
+  //         const myList = res.data && res.data.data !== undefined ? res.data.data : res.data;
+  //         if (Array.isArray(myList) && myList.length > 0) {
+  //           setListings(myList);
+  //           setOwnerFallback(true);
+  //         }
+  //       } catch (err) {
+  //         // ignore
+  //       }
+  //     } else {
+  //       setOwnerFallback(false);
+  //     }
+  //   } catch (err) {
+  //     console.error('Failed to load listings', err);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+const loadListings = async () => {
+  setLoading(true);
+
+  try {
+    let coords = null;
+
+    // STEP 1: Get device location
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        coords = {
+          lat: location.coords.latitude,
+          lng: location.coords.longitude,
+        };
+
+        console.log('📍 Device location:', coords);
       } else {
-        setOwnerFallback(false);
+        console.log('❌ Location permission denied');
       }
     } catch (err) {
-      console.error('Failed to load listings', err);
-    } finally {
-      setLoading(false);
+      console.log('❌ Location error:', err);
     }
-  };
 
-    React.useEffect(() => {
-      if (searchVisible) {
-        const t = setTimeout(() => searchInputRef.current?.focus(), 60);
-        return () => clearTimeout(t);
-      }
-      return;
-    }, [searchVisible]);
+    // STEP 2: Call API
+    const data = await getNearbyListings({
+      lat: coords?.lat,
+      lng: coords?.lng,
+      q: query || undefined,
+      listing_type: listingType || undefined,
+      category: selectedCategory || undefined,
+    });
 
-    React.useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
+    console.log('📦 Listings received:', data.length);
+
+    setListings(data || []);
+
+    // categories
+    const cats = Array.from(
+      new Set(
+        (data || [])
+          .map((l: Listing) => l.category)
+          .filter((c): c is string => !!c)
+      )
+    );
+
+    setCategories(cats);
+
+  } catch (err) {
+    console.error('❌ Failed to load listings', err);
+  } finally {
+    setLoading(false);
+  }
+};
+  React.useEffect(() => {
+    if (searchVisible) {
+      const t = setTimeout(() => searchInputRef.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+    return;
+  }, [searchVisible]);
+
+  React.useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
 
   return (
     <SafeAreaView style={styles.wrapper}>
@@ -162,7 +209,7 @@ export default function HomeScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : (
-          <Animated.FlatList
+        <Animated.FlatList
           data={listings}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
@@ -212,5 +259,5 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background },
   empty: { textAlign: 'center', marginTop: SPACING.lg, color: COLORS.textSecondary },
-  
+
 });

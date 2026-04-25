@@ -3,6 +3,7 @@ const listingsRepo = require('../db/repos/listings');
 const geoip = require('geoip-lite');
 const requestIp = require('request-ip');
 
+
 // Simple in-memory cache for geoip lookups to avoid repeated lookups for
 // the same IP. TTL set to 24 hours.
 const GEO_CACHE_TTL = 24 * 60 * 60 * 1000; // ms
@@ -99,30 +100,58 @@ async function getNearbyListings(req, res) {
     let latNum = lat !== undefined ? Number(lat) : null;
     let lngNum = lng !== undefined ? Number(lng) : null;
 
+    if (isNaN(latNum)) latNum = null;
+    if (isNaN(lngNum)) lngNum = null;
+
     if (latNum === null || lngNum === null) {
-      const ip = requestIp.getClientIp(req);
-      const ll = lookupGeoFromIp(ip);
-      if (ll) {
-        if (latNum === null) latNum = ll[0];
-        if (lngNum === null) lngNum = ll[1];
+      try {
+        const ip = requestIp.getClientIp(req);
+        const ll = lookupGeoFromIp(ip);
+        if (ll && Array.isArray(ll) && ll.length === 2) {
+          latNum = ll[0];
+          lngNum = ll[1];
+        }
+      } catch (err) {
+        console.error('Failed to get geo from IP', err);
       }
     }
 
-    if (latNum === null) latNum = DEFAULT_LAT;
-    if (lngNum === null) lngNum = DEFAULT_LNG;
+    if (latNum === null || lngNum === null) {
+      latNum = DEFAULT_LAT;
+      lngNum = DEFAULT_LNG;
+    }
+
+    const radiusKm = radius && !isNaN(Number(radius)) ? Number(radius) : 5;
+
+    const parsedMinPrice =
+      minPrice && !isNaN(Number(minPrice)) ? Number(minPrice) : undefined;
+
+    const parsedMaxPrice =
+      maxPrice && !isNaN(Number(maxPrice)) ? Number(maxPrice) : undefined;
 
     const listings = await listingsRepo.getNearbyListings({
       lat: latNum,
       lng: lngNum,
-      radiusKm: radius ? Number(radius) : 5,
+      radiusKm: radiusKm,
       category,
       listing_type,
       q,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined
+      minPrice: parsedMinPrice,
+      maxPrice: parsedMaxPrice
     });
 
-    res.json(listings);
+    return res.json({
+      success: true,
+      data: listings,
+      meta: {
+        usedLat: latNum,
+        usedLng: lngNum,
+        source:
+          lat !== undefined && lng !== undefined
+            ? 'query'
+            : 'fallback',
+      },
+    });
 
   } catch (err) {
     console.error(err);

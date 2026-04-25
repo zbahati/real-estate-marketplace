@@ -12,7 +12,7 @@ export async function getNearbyListings(options?: {
 }): Promise<Listing[]> {
   const lat = options?.lat;
   const lng = options?.lng;
-  const radius = options?.radius ?? 500;
+  const radius = options?.radius ?? 50;
   const limit = options?.limit ?? 20;
 
   try {

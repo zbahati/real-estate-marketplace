@@ -16,7 +16,7 @@ function resolveBaseUrl() {
   }
 
   // 3) fallback to localhost
-  return 'http://192.168.1.66:3000';
+  return 'http://192.168.1.65:3000';
 }
 
 const baseUrl = resolveBaseUrl();
