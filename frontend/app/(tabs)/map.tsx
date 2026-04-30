@@ -4,12 +4,14 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import MapView, { Circle, Marker, type Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getListings } from '../../src/api/listings';
 import type { Listing } from '../../src/types';
@@ -68,10 +70,14 @@ export default function MapScreen() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   const mapRef = useRef<MapView>(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const nearbyListings = useMemo<ListingWithCoordinate[]>(
     () =>
@@ -99,12 +105,38 @@ export default function MapScreen() {
     };
   }, [mapCenter]);
 
-  const fitMapToListings = useCallback((data: Listing[]) => {
+  const moveToRegion = useCallback((center: { latitude: number; longitude: number }) => {
+    setMapCenter({
+      ...center,
+      accuracy: null,
+    });
+
+    requestAnimationFrame(() => {
+      mapRef.current?.animateToRegion(
+        {
+          ...center,
+          latitudeDelta: MAP_REGION_DELTA,
+          longitudeDelta: MAP_REGION_DELTA,
+        },
+        500
+      );
+    });
+  }, []);
+
+  const fitMapToListings = useCallback((data: Listing[], fallbackCenter?: { latitude: number; longitude: number }) => {
     const coordinates = data
       .map(getListingCoordinate)
       .filter((coordinate): coordinate is { latitude: number; longitude: number } => coordinate !== null);
 
-    if (coordinates.length === 0) return;
+    if (coordinates.length === 0) {
+      if (fallbackCenter) moveToRegion(fallbackCenter);
+      return;
+    }
+
+    if (coordinates.length === 1) {
+      moveToRegion(coordinates[0]);
+      return;
+    }
 
     setMapCenter({
       ...coordinates[0],
@@ -122,17 +154,75 @@ export default function MapScreen() {
         },
       });
     });
-  }, []);
+  }, [moveToRegion]);
 
-  const loadMapListings = useCallback(async () => {
+  const loadMapListings = useCallback(async (query = '', fallbackCenter?: { latitude: number; longitude: number }) => {
     const data = await getListings({
       limit: MAP_LISTING_LIMIT,
+      q: query || undefined,
     });
 
     setListings(data);
-    setMessage(data.length === 0 ? 'No published listings found.' : null);
-    fitMapToListings(data);
+    setMessage(data.length === 0 ? 'No published listings found for this location.' : null);
+    fitMapToListings(data, fallbackCenter);
   }, [fitMapToListings]);
+
+  const loadDeviceLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== Location.PermissionStatus.GRANTED) return;
+
+      const searchLocation = await getReliableNearbySearchLocation();
+      setDeviceLocation(searchLocation.location);
+      setMessage((currentMessage) => currentMessage ?? searchLocation.message);
+    } catch (err) {
+      console.warn('Device location unavailable on map', err);
+      setMessage((currentMessage) => currentMessage ?? 'Device location is unavailable, but listings are still shown.');
+    }
+  }, []);
+
+  const geocodeLocationSearch = useCallback(async (query: string) => {
+    try {
+      const matches = await Location.geocodeAsync(query);
+      const firstMatch = matches[0];
+
+      if (!firstMatch) return null;
+
+      return {
+        latitude: firstMatch.latitude,
+        longitude: firstMatch.longitude,
+      };
+    } catch (err) {
+      console.warn('Location search geocoding failed', err);
+      return null;
+    }
+  }, []);
+
+  const searchLocationListings = useCallback(async () => {
+    const query = searchQuery.trim();
+    setSearching(true);
+    setMessage(null);
+
+    try {
+      if (!query) {
+        setActiveSearch('');
+        await loadMapListings('');
+        return;
+      }
+
+      setActiveSearch(query);
+      const searchCenter = await geocodeLocationSearch(query);
+      await loadMapListings(query, searchCenter ?? undefined);
+      if (searchCenter) {
+        moveToRegion(searchCenter);
+      }
+    } catch (err) {
+      console.error('Failed to search listings on map', err);
+      setMessage('Could not search that location. Check your connection and try again.');
+    } finally {
+      setSearching(false);
+    }
+  }, [geocodeLocationSearch, loadMapListings, moveToRegion, searchQuery]);
 
   const locateAndLoad = useCallback(
     async (isRefresh = false) => {
@@ -144,27 +234,17 @@ export default function MapScreen() {
       setMessage(null);
 
       try {
-        await loadMapListings();
-
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === Location.PermissionStatus.GRANTED) {
-          const searchLocation = await getReliableNearbySearchLocation();
-          setDeviceLocation(searchLocation.location);
-          setMessage((currentMessage) => currentMessage ?? searchLocation.message);
-        }
+        await loadMapListings(activeSearch);
+        await loadDeviceLocation();
       } catch (err) {
         console.error('Failed to load listings on map', err);
-        setMessage(
-          err instanceof Error && err.message === 'LOCATION_SERVICES_DISABLED'
-            ? 'Turn on device location services to show your position on the map.'
-            : 'Could not load map listings. Check your connection and try again.'
-        );
+        setMessage('Could not load map listings. Check your connection and try again.');
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [loadMapListings]
+    [activeSearch, loadDeviceLocation, loadMapListings]
   );
 
   useEffect(() => {
@@ -247,12 +327,51 @@ export default function MapScreen() {
         ))}
       </MapView>
 
+      <View style={[styles.searchPanel, { top: insets.top + SPACING.sm }]}>
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={searchLocationListings}
+            placeholder="Search Kigali, Gisenyi..."
+            returnKeyType="search"
+            style={styles.searchInput}
+          />
+          {searchQuery ? (
+            <Pressable
+              onPress={() => {
+                setSearchQuery('');
+                setActiveSearch('');
+                loadMapListings('');
+              }}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={18} color={COLORS.textSecondary} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          style={[styles.searchButton, searching ? styles.buttonDisabled : null]}
+          onPress={searchLocationListings}
+          disabled={searching}
+        >
+          {searching ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="arrow-forward" size={18} color="#fff" />
+          )}
+        </Pressable>
+      </View>
+
       <View style={styles.summary}>
         <Text style={styles.summaryTitle}>
           {nearbyListings.length} {nearbyListings.length === 1 ? 'listing' : 'listings'} on map
         </Text>
         <Text style={styles.summaryText}>
-          Showing all published properties with saved map coordinates.
+          {activeSearch
+            ? `Showing properties matching "${activeSearch}".`
+            : 'Showing all published properties with saved map coordinates.'}
         </Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </View>
@@ -309,6 +428,53 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  searchPanel: {
+    position: 'absolute',
+    left: SPACING.md,
+    right: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchRow: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    color: COLORS.textPrimary,
+    fontSize: FONT.body,
+  },
+  searchButton: {
+    width: 48,
+    height: 48,
+    marginLeft: SPACING.sm,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   summary: {
     position: 'absolute',

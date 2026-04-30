@@ -1,12 +1,130 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, FlatList, Image, TouchableOpacity, Linking, Platform, Modal, Dimensions, ScrollView, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Image, TouchableOpacity, Linking, Modal, Dimensions, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import api from '../../src/services/api';
 import { COLORS, SPACING, FONT, RADIUS } from '../../src/theme';
 
 type Params = { id?: string };
+const MIN_GALLERY_ZOOM = 1;
+const MAX_GALLERY_ZOOM = 3;
+
+function clampZoom(value: number) {
+  'worklet';
+  return Math.min(Math.max(value, MIN_GALLERY_ZOOM), MAX_GALLERY_ZOOM);
+}
+
+type ZoomableGalleryImageProps = {
+  uri: string;
+  width: number;
+  height: number;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  containerWidth: number;
+  containerHeight: number;
+  canPan: boolean;
+};
+
+function ZoomableGalleryImage({ uri, width, height, zoom, onZoomChange, containerWidth, containerHeight, canPan }: ZoomableGalleryImageProps) {
+  const scale = useSharedValue(zoom);
+  const startScale = useSharedValue(zoom);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedOffsetX = useSharedValue(0);
+  const savedOffsetY = useSharedValue(0);
+
+  React.useEffect(() => {
+    scale.value = withTiming(zoom, { duration: 120 });
+    startScale.value = zoom;
+    if (zoom === MIN_GALLERY_ZOOM) {
+      translateX.value = withTiming(0, { duration: 120 });
+      translateY.value = withTiming(0, { duration: 120 });
+      savedOffsetX.value = 0;
+      savedOffsetY.value = 0;
+    }
+  }, [scale, startScale, zoom, translateX, translateY, savedOffsetX, savedOffsetY]);
+
+  const clampTranslation = (tx: number, ty: number, currentScale: number) => {
+    'worklet';
+    const scaledW = width * currentScale;
+    const scaledH = height * currentScale;
+    const maxX = Math.max(0, (scaledW - containerWidth) / 2);
+    const maxY = Math.max(0, (scaledH - containerHeight) / 2);
+    return {
+      x: Math.min(Math.max(tx, -maxX), maxX),
+      y: Math.min(Math.max(ty, -maxY), maxY),
+    };
+  };
+
+  const pinchGesture = Gesture.Pinch()
+    .onStart(() => {
+      startScale.value = scale.value;
+      savedOffsetX.value = translateX.value;
+      savedOffsetY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      const nextZoom = clampZoom(startScale.value * event.scale);
+      scale.value = nextZoom;
+      const clamped = clampTranslation(savedOffsetX.value, savedOffsetY.value, nextZoom);
+      translateX.value = clamped.x;
+      translateY.value = clamped.y;
+      runOnJS(onZoomChange)(Number(nextZoom.toFixed(2)));
+    })
+    .onEnd(() => {
+      const nextZoom = clampZoom(scale.value);
+      scale.value = withTiming(nextZoom, { duration: 120 });
+      runOnJS(onZoomChange)(Number(nextZoom.toFixed(2)));
+    });
+
+  const conditionalPan = Gesture.Pan()
+    .minPointers(1)
+    .maxPointers(1)
+    .enabled(canPan)
+    .onStart(() => {
+      savedOffsetX.value = translateX.value;
+      savedOffsetY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      const clamped = clampTranslation(savedOffsetX.value + event.translationX, savedOffsetY.value + event.translationY, scale.value);
+      translateX.value = clamped.x;
+      translateY.value = clamped.y;
+    })
+    .onEnd(() => {
+      const clamped = clampTranslation(translateX.value, translateY.value, scale.value);
+      translateX.value = withTiming(clamped.x, { duration: 120 });
+      translateY.value = withTiming(clamped.y, { duration: 120 });
+    });
+
+  const combinedGesture = Gesture.Simultaneous(pinchGesture, conditionalPan);
+
+  const imageStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }, { translateX: translateX.value }, { translateY: translateY.value }],
+  }));
+
+  return (
+    <GestureDetector gesture={combinedGesture}>
+      <Animated.Image
+        source={{ uri }}
+        style={[
+          styles.galleryImage,
+          imageStyle,
+          {
+            width,
+            height,
+          },
+        ]}
+      />
+    </GestureDetector>
+  );
+}
 
 export default function ListingDetails() {
   const { id } = useLocalSearchParams<Params>();
@@ -17,15 +135,12 @@ export default function ListingDetails() {
   const [listing, setListing] = useState<any>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryZoom, setGalleryZoom] = useState(1);
   const windowWidth = Dimensions.get('window').width;
+  const windowHeight = Dimensions.get('window').height;
   const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    if (!id) return;
-    load();
-  }, [id]);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -38,13 +153,31 @@ export default function ListingDetails() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    load();
+  }, [id, load]);
 
   const openWhatsApp = (phone?: string) => {
     if (!phone) return;
     const text = encodeURIComponent('Hello from real estate marketplace, I am interested in your postings, is it still available?');
     const url = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${text}`;
     Linking.openURL(url).catch(() => alert('Unable to open WhatsApp'));
+  };
+
+  const closeGallery = () => {
+    setGalleryZoom(1);
+    setGalleryVisible(false);
+  };
+
+  const zoomIn = () => {
+    setGalleryZoom((zoom) => Math.min(zoom + 0.5, MAX_GALLERY_ZOOM));
+  };
+
+  const zoomOut = () => {
+    setGalleryZoom((zoom) => Math.max(zoom - 0.5, MIN_GALLERY_ZOOM));
   };
 
   if (loading) {
@@ -109,23 +242,58 @@ export default function ListingDetails() {
 
       {/* Gallery modal (slide up) */}
       <Modal visible={galleryVisible} animationType="slide">
+        <GestureHandlerRootView style={styles.modalRoot}>
         <SafeAreaView style={styles.modalSafe}>
           <View style={[styles.modalHeader, { top: insets.top + 12 }]}> 
-            <Pressable onPress={() => setGalleryVisible(false)} style={styles.iconBtn}>
+            <Pressable onPress={closeGallery} style={styles.iconBtn}>
               <Ionicons name="close" size={20} color="#fff" />
             </Pressable>
           </View>
-          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(e) => {
+
+          <View style={[styles.zoomControls, { bottom: insets.bottom + SPACING.lg }]}>
+            <Pressable
+              onPress={zoomOut}
+              style={[styles.zoomBtn, galleryZoom <= MIN_GALLERY_ZOOM ? styles.zoomBtnDisabled : null]}
+              disabled={galleryZoom <= MIN_GALLERY_ZOOM}
+            >
+              <Ionicons name="remove" size={20} color="#fff" />
+            </Pressable>
+            <Pressable onPress={() => setGalleryZoom(1)} style={styles.zoomValueBtn}>
+              <Text style={styles.zoomValueText}>{Math.round(galleryZoom * 100)}%</Text>
+            </Pressable>
+            <Pressable
+              onPress={zoomIn}
+              style={[styles.zoomBtn, galleryZoom >= MAX_GALLERY_ZOOM ? styles.zoomBtnDisabled : null]}
+              disabled={galleryZoom >= MAX_GALLERY_ZOOM}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+            </Pressable>
+          </View>
+
+          <ScrollView horizontal pagingEnabled scrollEnabled={galleryZoom <= MIN_GALLERY_ZOOM} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(e) => {
             const index = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
             setActiveIndex(index);
+            setGalleryZoom(1);
           }} contentOffset={{ x: activeIndex * windowWidth, y: 0 }}>
             {images.length > 0 ? images.map((img) => (
-              <Image key={img} source={{ uri: img }} style={{ width: windowWidth, height: Dimensions.get('window').height * 0.8, resizeMode: 'contain', backgroundColor: '#000' }} />
+              <View key={img} style={[styles.gallerySlide, { width: windowWidth, height: windowHeight }]}>
+                <ZoomableGalleryImage
+                  uri={img}
+                  width={windowWidth}
+                  height={windowHeight * 0.82}
+                  zoom={galleryZoom}
+                  onZoomChange={setGalleryZoom}
+                  containerWidth={windowWidth}
+                  containerHeight={windowHeight * 0.82}
+                  canPan={galleryZoom > MIN_GALLERY_ZOOM}
+                />
+              </View>
             )) : (
-              <View style={{ width: windowWidth, height: Dimensions.get('window').height * 0.8, backgroundColor: '#000' }} />
+              <View style={{ width: windowWidth, height: windowHeight * 0.8, backgroundColor: '#000' }} />
             )}
           </ScrollView>
         </SafeAreaView>
+        </GestureHandlerRootView>
       </Modal>
 
       {/* Content */}
@@ -191,6 +359,42 @@ const styles = StyleSheet.create({
   thumbWrap: { marginRight: SPACING.sm, borderRadius: RADIUS.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent', width: 96, height: 72 },
   thumb: { width: 96, height: 72, resizeMode: 'cover' },
   thumbActive: { borderColor: COLORS.primary },
+  modalRoot: { flex: 1 },
   modalSafe: { flex: 1, backgroundColor: '#000' },
   modalHeader: { position: 'absolute', top: 12, left: 12, right: 12, zIndex: 10, flexDirection: 'row', justifyContent: 'flex-end' },
+  gallerySlide: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: '#000' },
+  galleryImage: { resizeMode: 'contain', backgroundColor: '#000' },
+  zoomControls: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  zoomBtnDisabled: { opacity: 0.4 },
+  zoomValueBtn: {
+    minWidth: 72,
+    height: 44,
+    marginHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  zoomValueText: { color: '#fff', fontWeight: '800' },
 });
