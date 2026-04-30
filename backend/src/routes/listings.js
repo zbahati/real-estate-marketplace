@@ -3,6 +3,7 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const {
   createListing,
+  getListings,
   getNearbyListings,
   getMyListings,
   updateListing,
@@ -11,6 +12,7 @@ const {
 } = require('../controllers/listingController');
 
 router.post('/', authMiddleware, createListing);
+router.get('/', getListings);
 router.get('/nearby', getNearbyListings);
 router.get('/my', authMiddleware, getMyListings);
 router.get('/:id', getListingDetails);

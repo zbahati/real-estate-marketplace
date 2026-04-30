@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "migrate": "node scripts/run_migration.js",
+    "seed:rwanda": "node scripts/seed_rwanda_listings.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },

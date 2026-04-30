@@ -1,5 +1,37 @@
 import api from '../services/api';
-import type { Listing, ApiResponse } from '../types';
+import type { Listing } from '../types';
+
+type ListingQueryOptions = {
+  limit?: number;
+  q?: string;
+  listing_type?: string;
+  category?: string;
+};
+
+const toListingArray = (payload: any): Listing[] => {
+  const out = payload && payload.data !== undefined ? payload.data : payload;
+  return Array.isArray(out) ? out : (out ? [out] : []);
+};
+
+export async function getListings(options?: ListingQueryOptions): Promise<Listing[]> {
+  const limit = options?.limit ?? 50;
+
+  try {
+    const params: any = { limit };
+    if (options?.q) params.q = options.q;
+    if (options?.listing_type) params.listing_type = options.listing_type;
+    if (options?.category) params.category = options.category;
+
+    const res = await api.get<any>('/listings', {
+      params,
+    });
+
+    return toListingArray(res.data);
+  } catch (err) {
+    console.error('getListings error', err);
+    throw err;
+  }
+}
 
 export async function getNearbyListings(options?: {
   lat?: number;
@@ -31,7 +63,7 @@ export async function getNearbyListings(options?: {
     try {
       console.log('[getNearbyListings] baseURL=', (api as any).defaults?.baseURL, 'status=', res.status);
       console.log('[getNearbyListings] response.data=', JSON.stringify(res.data).slice(0, 2000));
-    } catch (e) {
+    } catch {
       // ignore logging errors
     }
 
@@ -39,14 +71,11 @@ export async function getNearbyListings(options?: {
     // sometimes a wrapped object `{ success, data }`.
     // Support both shapes: prefer `res.data.data` if present,
     // otherwise return `res.data` directly.
-    const payload = res.data;
-    const out = payload && payload.data !== undefined ? payload.data : payload;
-    // Ensure we always return an array
-    return Array.isArray(out) ? out : (out ? [out] : []);
+    return toListingArray(res.data);
   } catch (err) {
     console.error('getNearbyListings error', err);
     throw err;
   }
 }
 
-export default { getNearbyListings };
+export default { getListings, getNearbyListings };

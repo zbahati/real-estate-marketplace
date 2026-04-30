@@ -9,6 +9,18 @@ const requestIp = require('request-ip');
 const GEO_CACHE_TTL = 24 * 60 * 60 * 1000; // ms
 const geoCache = new Map(); // ip -> { ll: [lat,lng], expires }
 
+function parseNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampNumber(value, fallback, min, max) {
+  const parsed = parseNumber(value);
+  if (parsed === null) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
 function lookupGeoFromIp(ip) {
   if (!ip) return null;
   const now = Date.now();
@@ -86,42 +98,11 @@ async function getListingDetails(req, res) {
   }
 }
 
-async function getNearbyListings(req, res) {
+async function getListings(req, res) {
   try {
-    const { lat, lng, radius, category, minPrice, maxPrice, q, listing_type } = req.query;
+    const { limit, category, minPrice, maxPrice, q, listing_type } = req.query;
 
-    // Try to determine coords in this order:
-    // 1. Query params `lat`/`lng`
-    // 2. IP-based geolocation using geoip-lite (via `request-ip`)
-    // 3. Default center (Gisenyi)
-    const DEFAULT_LAT = process.env.DEFAULT_LAT ? Number(process.env.DEFAULT_LAT) : -1.701;
-    const DEFAULT_LNG = process.env.DEFAULT_LNG ? Number(process.env.DEFAULT_LNG) : 29.256;
-
-    let latNum = lat !== undefined ? Number(lat) : null;
-    let lngNum = lng !== undefined ? Number(lng) : null;
-
-    if (isNaN(latNum)) latNum = null;
-    if (isNaN(lngNum)) lngNum = null;
-
-    if (latNum === null || lngNum === null) {
-      try {
-        const ip = requestIp.getClientIp(req);
-        const ll = lookupGeoFromIp(ip);
-        if (ll && Array.isArray(ll) && ll.length === 2) {
-          latNum = ll[0];
-          lngNum = ll[1];
-        }
-      } catch (err) {
-        console.error('Failed to get geo from IP', err);
-      }
-    }
-
-    if (latNum === null || lngNum === null) {
-      latNum = DEFAULT_LAT;
-      lngNum = DEFAULT_LNG;
-    }
-
-    const radiusKm = radius && !isNaN(Number(radius)) ? Number(radius) : 5;
+    const parsedLimit = Math.round(clampNumber(limit, 50, 1, 100));
 
     const parsedMinPrice =
       minPrice && !isNaN(Number(minPrice)) ? Number(minPrice) : undefined;
@@ -129,10 +110,8 @@ async function getNearbyListings(req, res) {
     const parsedMaxPrice =
       maxPrice && !isNaN(Number(maxPrice)) ? Number(maxPrice) : undefined;
 
-    const listings = await listingsRepo.getNearbyListings({
-      lat: latNum,
-      lng: lngNum,
-      radiusKm: radiusKm,
+    const listings = await listingsRepo.getPublicListings({
+      limit: parsedLimit,
       category,
       listing_type,
       q,
@@ -144,12 +123,98 @@ async function getNearbyListings(req, res) {
       success: true,
       data: listings,
       meta: {
+        source: 'public',
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getNearbyListings(req, res) {
+  try {
+    const { lat, lng, radius, limit, category, minPrice, maxPrice, q, listing_type } = req.query;
+
+    // Try to determine coords in this order:
+    // 1. Query params `lat`/`lng`
+    // 2. IP-based geolocation using geoip-lite (via `request-ip`)
+    // 3. Default center (Gisenyi)
+    const DEFAULT_LAT = process.env.DEFAULT_LAT ? Number(process.env.DEFAULT_LAT) : -1.701;
+    const DEFAULT_LNG = process.env.DEFAULT_LNG ? Number(process.env.DEFAULT_LNG) : 29.256;
+
+    let latNum = parseNumber(lat);
+    let lngNum = parseNumber(lng);
+    let source = latNum !== null && lngNum !== null ? 'query' : 'fallback';
+
+    if (latNum === null || lngNum === null) {
+      try {
+        const ip = requestIp.getClientIp(req);
+        const ll = lookupGeoFromIp(ip);
+        if (ll && Array.isArray(ll) && ll.length === 2) {
+          latNum = ll[0];
+          lngNum = ll[1];
+          source = 'ip';
+        }
+      } catch (err) {
+        console.error('Failed to get geo from IP', err);
+      }
+    }
+
+    if (latNum === null || lngNum === null) {
+      latNum = DEFAULT_LAT;
+      lngNum = DEFAULT_LNG;
+      source = 'default';
+    }
+
+    const radiusKm = clampNumber(radius, 5, 1, 200);
+    const parsedLimit = Math.round(clampNumber(limit, 20, 1, 100));
+
+    const parsedMinPrice =
+      minPrice && !isNaN(Number(minPrice)) ? Number(minPrice) : undefined;
+
+    const parsedMaxPrice =
+      maxPrice && !isNaN(Number(maxPrice)) ? Number(maxPrice) : undefined;
+
+    let listings = await listingsRepo.getNearbyListings({
+      lat: latNum,
+      lng: lngNum,
+      radiusKm: radiusKm,
+      limit: parsedLimit,
+      category,
+      listing_type,
+      q,
+      minPrice: parsedMinPrice,
+      maxPrice: parsedMaxPrice
+    });
+
+    if (listings.length === 0 && source === 'query') {
+      listings = await listingsRepo.getNearbyListings({
+        lat: DEFAULT_LAT,
+        lng: DEFAULT_LNG,
+        radiusKm: radiusKm,
+        limit: parsedLimit,
+        category,
+        listing_type,
+        q,
+        minPrice: parsedMinPrice,
+        maxPrice: parsedMaxPrice
+      });
+
+      if (listings.length > 0) {
+        latNum = DEFAULT_LAT;
+        lngNum = DEFAULT_LNG;
+        source = 'default_after_empty_query';
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: listings,
+      meta: {
         usedLat: latNum,
         usedLng: lngNum,
-        source:
-          lat !== undefined && lng !== undefined
-            ? 'query'
-            : 'fallback',
+        source,
       },
     });
 
@@ -226,6 +291,7 @@ async function deleteListing(req, res) {
 
 module.exports = {
   createListing,
+  getListings,
   getListingDetails,
   getNearbyListings,
   getMyListings,

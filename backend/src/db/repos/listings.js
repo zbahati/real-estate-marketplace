@@ -86,6 +86,82 @@ async function getListingDetails(id) {
   return res.rows[0];
 }
 
+async function getPublicListings({
+  limit = 50,
+  category,
+  listing_type,
+  q,
+  minPrice,
+  maxPrice
+}) {
+  const clauses = [`l.is_published = true`];
+  const params = [];
+  let idx = 1;
+
+  if (category) {
+    clauses.push(`LOWER(l.category) = LOWER($${idx++})`);
+    params.push(category);
+  }
+
+  if (q) {
+    clauses.push(`(
+      LOWER(l.title) LIKE LOWER($${idx}) OR
+      LOWER(l.description) LIKE LOWER($${idx}) OR
+      LOWER(loc.city) LIKE LOWER($${idx}) OR
+      LOWER(loc.country) LIKE LOWER($${idx}) OR
+      LOWER(l.listing_type) LIKE LOWER($${idx})
+    )`);
+    params.push(`%${q}%`);
+    idx++;
+  }
+
+  if (listing_type) {
+    clauses.push(`LOWER(l.listing_type) = LOWER($${idx++})`);
+    params.push(listing_type);
+  }
+
+  if (minPrice != null) {
+    clauses.push(`l.price >= $${idx++}`);
+    params.push(minPrice);
+  }
+
+  if (maxPrice != null) {
+    clauses.push(`l.price <= $${idx++}`);
+    params.push(maxPrice);
+  }
+
+  params.push(limit);
+
+  const sql = `
+    SELECT 
+      l.*,
+      loc.lat,
+      loc.lng,
+      json_build_object(
+        'city', loc.city,
+        'country', loc.country,
+        'lat', loc.lat,
+        'lng', loc.lng
+      ) AS location,
+      COALESCE(
+        json_agg(
+          json_build_object('id', img.id, 'url', img.url)
+        ) FILTER (WHERE img.id IS NOT NULL),
+        '[]'
+      ) AS images
+    FROM listings l
+    LEFT JOIN locations loc ON l.location_id = loc.id
+    LEFT JOIN images img ON img.listing_id = l.id
+    WHERE ${clauses.join(' AND ')}
+    GROUP BY l.id, loc.id
+    ORDER BY l.created_at DESC
+    LIMIT $${idx}
+  `;
+
+  const res = await db.query(sql, params);
+  return res.rows;
+}
+
 // async function getNearbyListings({
 //   lat,
 //   lng,
@@ -357,6 +433,7 @@ async function getListingById(id) {
 
 module.exports = {
   createListing,
+  getPublicListings,
   getNearbyListings,
   getListingsByOwner,
   getListingById,
