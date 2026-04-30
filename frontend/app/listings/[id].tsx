@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Image, TouchableOpacity, Linking, Modal, Dimensions, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Image, TouchableOpacity, Linking, Modal, Dimensions, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import api from '../../src/services/api';
+import { addFavorite, removeFavorite, getFavorites } from '../../src/api/favorites';
+import { useAuthStore } from '../../src/store/authStore';
 import { COLORS, SPACING, FONT, RADIUS } from '../../src/theme';
 
 type Params = { id?: string };
@@ -129,6 +131,7 @@ function ZoomableGalleryImage({ uri, width, height, zoom, onZoomChange, containe
 export default function ListingDetails() {
   const { id } = useLocalSearchParams<Params>();
   const router = useRouter();
+  const { token, favoriteIds, addFavoriteId, removeFavoriteId, setFavoriteIds } = useAuthStore();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,9 +139,46 @@ export default function ListingDetails() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryZoom, setGalleryZoom] = useState(1);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const windowWidth = Dimensions.get('window').width;
   const windowHeight = Dimensions.get('window').height;
   const insets = useSafeAreaInsets();
+  const listingId = listing?.id ? Number(listing.id) : null;
+
+  const isFavorite = listingId != null && favoriteIds.has(listingId);
+
+  useEffect(() => {
+    if (token) {
+      getFavorites().then((data) => {
+        setFavoriteIds(data.map((item) => item.id));
+      }).catch(() => {});
+    }
+  }, [token, setFavoriteIds]);
+
+  const toggleFavorite = useCallback(async () => {
+    if (!token) {
+      Alert.alert('Login Required', 'Please login to save favorites', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Login', onPress: () => router.push('/(auth)/login' as any) },
+      ]);
+      return;
+    }
+    if (!listingId) return;
+    setFavoriteLoading(true);
+    try {
+      if (isFavorite) {
+        await removeFavorite(listingId);
+        removeFavoriteId(listingId);
+      } else {
+        await addFavorite(listingId);
+        addFavoriteId(listingId);
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to update favorites');
+    } finally {
+      setFavoriteLoading(false);
+    }
+  }, [token, listingId, isFavorite, router, addFavoriteId, removeFavoriteId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -221,8 +261,17 @@ export default function ListingDetails() {
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={20} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { /* favorite placeholder */ }} style={styles.iconBtn}>
-            <Ionicons name="heart" size={20} color="#fff" />
+          <TouchableOpacity
+            onPress={toggleFavorite}
+            disabled={favoriteLoading}
+            activeOpacity={0.7}
+            style={styles.iconBtn}
+          >
+            <Ionicons
+              name={isFavorite ? 'heart' : 'heart-outline'}
+              size={20}
+              color={isFavorite ? COLORS.danger : '#fff'}
+            />
           </TouchableOpacity>
         </View>
 

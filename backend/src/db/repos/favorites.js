@@ -15,11 +15,20 @@ async function addFavorite(user_id, listing_id) {
 // Get all favorites for user
 async function getUserFavorites(user_id) {
   const sql = `
-    SELECT l.*
+    SELECT 
+      l.*,
+      COALESCE(
+        json_agg(
+          json_build_object('id', img.id, 'url', img.url)
+        ) FILTER (WHERE img.id IS NOT NULL),
+        '[]'
+      ) AS images
     FROM favorites f
     JOIN listings l ON f.listing_id = l.id
+    LEFT JOIN images img ON img.listing_id = l.id
     WHERE f.user_id = $1
-    ORDER BY f.created_at DESC
+    GROUP BY l.id
+    ORDER BY MAX(f.created_at) DESC
   `;
   const res = await db.query(sql, [user_id]);
   return res.rows;

@@ -1,14 +1,14 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import type { Listing } from '../types';
 import { COLORS, SPACING, RADIUS, FONT } from '../theme';
 
 export interface ListingCardProps {
   listing: Listing;
-  onPress?: (listing: Listing) => void;
+  onPress?: (id: number) => void;
 }
 
-export default function ListingCard({ listing, onPress }: ListingCardProps) {
+const ListingCard = React.memo(function ListingCard({ listing, onPress }: ListingCardProps) {
   const imageUrl = listing.images && listing.images.length > 0 ? listing.images[0].url : null;
   const isVehicle = (listing.category || '').toLowerCase() === 'car' || (listing.category || '').toLowerCase() === 'vehicle';
   const locationLabel = listing.location
@@ -19,8 +19,28 @@ export default function ListingCard({ listing, onPress }: ListingCardProps) {
   const priceLabel =
     listing.price !== undefined ? `RWF ${Number(listing.price).toLocaleString()}` : 'Price on request';
 
+  const handlePress = useCallback(() => {
+    onPress?.(listing.id);
+  }, [onPress, listing.id]);
+
+  const metaContent = useMemo(() => (
+    <View style={styles.metaRow}>
+      <Text style={styles.type}>{listing.listing_type ?? '—'}</Text>
+      <Text style={styles.cat}>{listing.category ?? '—'}</Text>
+      {listing.distance !== undefined && (
+        <Text style={styles.distance}>{String(listing.distance)} km</Text>
+      )}
+      {!isVehicle && listing.bedrooms !== undefined && (
+        <Text style={styles.meta}>{listing.bedrooms} bd</Text>
+      )}
+      {!isVehicle && listing.bathrooms !== undefined && (
+        <Text style={styles.meta}>{listing.bathrooms} ba</Text>
+      )}
+    </View>
+  ), [listing.listing_type, listing.category, listing.distance, listing.bedrooms, listing.bathrooms, isVehicle]);
+
   return (
-    <TouchableOpacity style={styles.card} onPress={() => onPress?.(listing)} activeOpacity={0.85}>
+    <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.85}>
       {imageUrl ? (
         <Image source={{ uri: imageUrl }} style={styles.image} />
       ) : (
@@ -37,19 +57,7 @@ export default function ListingCard({ listing, onPress }: ListingCardProps) {
           <Text style={styles.location} numberOfLines={1}>{locationLabel}</Text>
         ) : null}
 
-        <View style={styles.metaRow}>
-          <Text style={styles.type}>{listing.listing_type ?? '—'}</Text>
-          <Text style={styles.cat}>{listing.category ?? '—'}</Text>
-          {listing.distance !== undefined && (
-            <Text style={styles.distance}>{String(listing.distance)} km</Text>
-          )}
-          {!isVehicle && listing.bedrooms !== undefined && (
-            <Text style={styles.meta}>{listing.bedrooms} bd</Text>
-          )}
-          {!isVehicle && listing.bathrooms !== undefined && (
-            <Text style={styles.meta}>{listing.bathrooms} ba</Text>
-          )}
-        </View>
+        {metaContent}
 
         {listing.description ? (
           <Text style={styles.desc} numberOfLines={2}>{listing.description}</Text>
@@ -57,7 +65,9 @@ export default function ListingCard({ listing, onPress }: ListingCardProps) {
       </View>
     </TouchableOpacity>
   );
-}
+});
+
+export default ListingCard;
 
 const styles = StyleSheet.create({
   card: {

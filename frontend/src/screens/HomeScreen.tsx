@@ -152,7 +152,7 @@ export default function HomeScreen() {
           renderItem={({ item }) => (
             <ListingCard
               listing={item}
-              onPress={() => router.push({ pathname: '/listings/[id]', params: { id: String(item.id) } })}
+              onPress={(id) => router.push({ pathname: '/listings/[id]', params: { id: String(id) } })}
             />
           )}
           ListEmptyComponent={<Text style={styles.empty}>No listings found.</Text>}
@@ -163,8 +163,10 @@ export default function HomeScreen() {
           }}
           refreshing={loading}
           onRefresh={() => loadListings(query)}
-          initialNumToRender={6}
+          initialNumToRender={8}
+          maxToRenderPerBatch={5}
           windowSize={10}
+          removeClippedSubviews={Platform.OS === 'android'}
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
             useNativeDriver: true,
           })}
