@@ -11,6 +11,13 @@ export interface ListingCardProps {
 export default function ListingCard({ listing, onPress }: ListingCardProps) {
   const imageUrl = listing.images && listing.images.length > 0 ? listing.images[0].url : null;
   const isVehicle = (listing.category || '').toLowerCase() === 'car' || (listing.category || '').toLowerCase() === 'vehicle';
+  const locationLabel = listing.location
+    ? typeof listing.location === 'string'
+      ? listing.location
+      : listing.location.name ?? [listing.location.city, listing.location.country].filter(Boolean).join(', ')
+    : '';
+  const priceLabel =
+    listing.price !== undefined ? `RWF ${Number(listing.price).toLocaleString()}` : 'Price on request';
 
   return (
     <TouchableOpacity style={styles.card} onPress={() => onPress?.(listing)} activeOpacity={0.85}>
@@ -23,10 +30,12 @@ export default function ListingCard({ listing, onPress }: ListingCardProps) {
       <View style={styles.content}>
         <View style={styles.rowTop}>
           <Text style={styles.title} numberOfLines={1}>{listing.title}</Text>
-          {listing.price !== undefined && (
-            <Text style={styles.price}>${listing.price.toLocaleString()}</Text>
-          )}
+          <Text style={styles.price}>{priceLabel}</Text>
         </View>
+
+        {locationLabel ? (
+          <Text style={styles.location} numberOfLines={1}>{locationLabel}</Text>
+        ) : null}
 
         <View style={styles.metaRow}>
           <Text style={styles.type}>{listing.listing_type ?? '—'}</Text>
@@ -75,12 +84,13 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   title: {
+    flex: 1,
     fontSize: FONT.subtitle,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   price: {
-    marginTop: 6,
+    marginLeft: SPACING.sm,
     color: COLORS.primary,
     fontWeight: '700',
     fontSize: FONT.body,
@@ -94,6 +104,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 6,
+    flexWrap: 'wrap',
+  },
+  location: {
+    marginTop: 6,
+    color: COLORS.textSecondary,
+    fontSize: FONT.small,
   },
   type: {
     backgroundColor: COLORS.primaryLight,

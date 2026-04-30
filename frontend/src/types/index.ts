@@ -14,6 +14,8 @@ export interface Image {
 export interface Location {
   id: number;
   name?: string;
+  city?: string;
+  country?: string;
   lat: number;
   lng: number;
 }
@@ -26,6 +28,7 @@ export interface Listing {
   lat: number;
   lng: number;
   images?: Image[];
+  location?: Location | string;
   location_id?: number;
   created_at?: string;
   listing_type?: string;
