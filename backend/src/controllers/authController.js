@@ -26,7 +26,13 @@ async function register(req, res) {
       phone,
     });
 
-    res.status(201).json(user);
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({ user, token });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -60,7 +66,21 @@ async function login(req, res) {
   }
 }
 
+async function getMe(req, res) {
+  try {
+    const user = await usersRepo.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    res.json({ success: true, data: user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+}
+
 module.exports = {
   register,
   login,
+  getMe,
 };
